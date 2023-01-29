@@ -1,17 +1,24 @@
 '''
-Heatwave detection in Estonian Environment Agency daily max temperature data.
-Assumes the following columns: Aasta, Kuu, Paev, followed by any N of station columns.
-Note that heatwave is defined as >=3 consecutive days with daily max
-    temperatur equal/exceeding the hw_th. Heatwave continues if there is only
-    a single day below hw_th as long as the previous and next day meet 
-    the hw_th.
-Last edited: Sven-Erik Enno, 24/01/2023.
+-------------------------------------------------------------------------------
+Heatwave detection in Estonian Environment Agency daily max temperature data, 
+following their definition:
+   - every day exceeding fixed or day specific threshold is a heat day.
+   - at least 3 heat days in a row is a heatwave.
+   - if one day is cooler than threshold but the previous and next day both
+     meet the threshold then the heatwave continues.
+Assumes the following columns in the input daily maximum temperature xlsx file
+table: Aasta, Kuu, Paev, followed by any N of station columns.
+-------------------------------------------------------------------------------
+The script is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. USE AT YOUR OWN RISK!
+-------------------------------------------------------------------------------
+Last edited: Sven-Erik Enno, 29/01/2023.
+-------------------------------------------------------------------------------
 '''
-
 
 import pandas as pd
 import numpy as np
-
 
 
 def year_stn_stats(df_ys, hw_th, hw_min_days):
@@ -21,8 +28,8 @@ def year_stn_stats(df_ys, hw_th, hw_min_days):
     heatwaves for this station during this year and output their statistics. 
     Args:
       df_ys = Pandas df, daily maximum temperatures of one station during one year.
-      hw_th = float/int fixed heatwave temperature threshold or Pandas df with daily
-        thresholds for this station.
+      hw_th = float/int fixed heatwave temperature threshold or Pandas series with 
+        daily thresholds for this station.
       hw_min_days = minimum duration to be a heatwave, otherwise just heat days.
     Returns:
       n_days = int total N of days per year exceeding hw_th.
@@ -31,7 +38,14 @@ def year_stn_stats(df_ys, hw_th, hw_min_days):
       n_days_hw = int total N of days during heatwaves.
     '''
     
-    hd_idx = list(df_ys[df_ys >= hw_th].index)
+    # Check if fixed or daily threshold and process accordingly. 
+    if isinstance(hw_th, pd.Series):
+        df_ys = df_ys - hw_th
+        hd_idx = list(df_ys[df_ys >= 0].index)
+    else:
+        hd_idx = list(df_ys[df_ys >= hw_th].index)
+
+    # Now split heat day indices to heatwaves.
     hws = []
     hw = []
     for day in hd_idx:
@@ -47,6 +61,8 @@ def year_stn_stats(df_ys, hw_th, hw_min_days):
                 hws.append(hw)
                 hw = [day]
     hws.append(hw)
+
+    # Finally get the heatwave stats.
     durations = [len(hw) for hw in hws]
     n_days = sum(durations)
     durations_hws = [d for d in durations if d >= hw_min_days]
@@ -55,6 +71,27 @@ def year_stn_stats(df_ys, hw_th, hw_min_days):
     n_days_hw = sum(durations_hws)
     
     return n_days, n_hws, max_dur, n_days_hw
+
+
+def get_station_th(station, hw_th):
+    '''
+    Find heatwave threshold for this particular station if daily thresholds
+    data frame or just return the fixed threshold value.
+    Args:
+      station = name of the station as it appears in the input file.
+      hw_th = float/int fixed heatwave temperature threshold or
+        Pandas df stations x days with day/station specific thresholds
+        (note - this must be one number for each day, no need to repeat
+        e.g. 10 times when analyzing 10 years).
+    Returns:
+      hw_th_stn = int/float or Pandas.Series heatwave threshold for this station.
+    '''
+    
+    try:
+        hw_th_stn = hw_th[station]
+        return hw_th_stn
+    except TypeError as e:
+        return hw_th
 
 
 def process_df(df, hw_th):
@@ -66,9 +103,9 @@ def process_df(df, hw_th):
     Args:
       df = Pandas df, stations x dates, daily maximum temperatures.
       hw_th = float/int fixed heatwave temperature threshold or
-              Pandas df stations x days with day/station specific thresholds
-              (note - this can be one number for each day, no need to repeat
-              e.g. 10 times when analyzing 10 years).
+        Pandas df stations x days with day/station specific thresholds
+        (note - this must be one number for each day, no need to repeat
+        e.g. 10 times when analyzing 10 years).
     Returns:
       days = Pandas df total N of days per year/station exceeding hw_th.
       hws = Pandas df total N of heatwaves per year/station.
@@ -88,7 +125,9 @@ def process_df(df, hw_th):
         days_y, hws_y, max_durs_y, days_hws_y = {}, {}, {}, {}
         for stn in stations:
             df_ys = df_y[stn]
-            n_days, n_hws, max_dur, n_days_hw = year_stn_stats(df_ys, hw_th, hw_min_days)
+            df_ys = df_ys.reset_index(drop=True)
+            stn_hw_th = get_station_th(stn, hw_th)
+            n_days, n_hws, max_dur, n_days_hw = year_stn_stats(df_ys, stn_hw_th, hw_min_days)
             days_y[stn] = n_days
             hws_y[stn] = n_hws
             max_durs_y[stn] = max_dur
@@ -147,25 +186,42 @@ def input_reader(fname, ws_data_name=None, ws_th_name=None):
     
     if ws_data_name is None:
         return pd.read_excel(fname), None
+    elif ws_th_name is None:
+        return pd.read_excel(fname, sheet_name=ws_data_name), None
     else:
-        pass
+        return pd.read_excel(fname, sheet_name=ws_data_name), pd.read_excel(fname, sheet_name=ws_th_name)
     
 
 
 def Main():
-    hw_fixed_th = 30
+    #TODO Should actually implement here argparse with ft (fixed threshold) and dt (daily threshold) modes. 
+    
+    # Fixed heatwave threshold in degrees, used if daily threshold are not available. 
+    hw_fixed_th = 27
     
     # Input file path here, ./ means this directory.
-    data_file = './Kuumalained.xlsx'
-    df_data, hw_th = input_reader(data_file, ws_data_name=None, ws_th_name=None)
+    data_file = './Kvantiilid_kuumalained.xlsx'
+    # Name of the worksheet containing data, can be None if only one sheet and this is the data.
+    wsdn = 'Algandmed'
+    # Name of the worksheet containing daily thresholds, if present.
+    # Set to None to use the fixed threshold above. 
+    wsthn = 'Kvantiilid' #None
+    
+    # Exctract temperature (and if needed also threshold) data.
+    df_data, hw_th = input_reader(data_file, ws_data_name=wsdn, ws_th_name=wsthn)
+    
+    # If not daily threshold then use the fixed threshold.
+    if hw_th is None:
+        hw_th = hw_fixed_th 
+        hw_str = f'th_{hw_fixed_th}'
+    else:
+        hw_str = 'th_QUANTIL'
     
     # Compute heatwave stats.
-    if hw_th is None:
-        hw_th = hw_fixed_th
     days, hws, max_durs, days_hws = process_df(df_data, hw_th)
     
     # Write the stats into an output file.
-    out_fname = f'./Heatwave_stats_th{hw_th}.xlsx'
+    out_fname = f'./Heatwave_stats_{hw_str}.xlsx'
     output_writer(out_fname, days, hws, max_durs, days_hws)
 
     
