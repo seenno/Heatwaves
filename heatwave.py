@@ -13,7 +13,7 @@ The script is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
 A PARTICULAR PURPOSE. USE AT YOUR OWN RISK!
 -------------------------------------------------------------------------------
-Last edited: Sven-Erik Enno, 29/01/2023.
+Author: Sven-Erik Enno, University of Tartu, Department of Geography, 2023.
 -------------------------------------------------------------------------------
 '''
 
