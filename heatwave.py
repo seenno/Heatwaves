@@ -54,6 +54,7 @@ def year_stn_stats(df_ys, hw_th, hw_min_days):
         else:
             if (day - hw[-1] == 1):
                 hw.append(day)
+            # Comment out if one day <threshold shall not contniue the heatwave.
             elif (day - hw[-1] == 2):
                 hw.append(day - 1)
                 hw.append(day)

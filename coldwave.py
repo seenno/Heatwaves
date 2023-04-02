@@ -126,13 +126,13 @@ def process_df(df, hw_th):
         df_y = df[df['Aasta'] == year]
         days_y, hws_y, max_durs_y, days_hws_y = {}, {}, {}, {}
         for stn in stations:
-            if stn not in list(hw_th.columns)[3:]:
+            if isinstance(hw_th, pd.DataFrame) and stn not in list(hw_th.columns)[3:]:
                 continue
             df_ys = df_y[stn]
             df_ys = df_ys.reset_index(drop=True)
             stn_hw_th = get_station_th(stn, hw_th)
-            # If no 29th of Feb then remove its threshold.
-            if len(stn_hw_th) > len(df_ys):
+            # If no 29th of Feb then remove its threshold (only if daily thresholds).
+            if isinstance(stn_hw_th, pd.Series) and len(stn_hw_th) > len(df_ys):
                 stn_hw_th = stn_hw_th.drop(labels=[151], axis=0).reset_index(drop=True)
             n_days, n_hws, max_dur, n_days_hw = year_stn_stats(df_ys, stn_hw_th, hw_min_days)
             days_y[stn] = n_days
@@ -204,7 +204,7 @@ def Main():
     #TODO Should actually implement here argparse with ft (fixed threshold) and dt (daily threshold) modes. 
     
     # Fixed heatwave threshold in degrees, used if daily threshold are not available. 
-    hw_fixed_th = 27
+    hw_fixed_th = -15
     
     # Input file path here, ./ means this directory.
     data_file = './Kulmalained.xlsx'
